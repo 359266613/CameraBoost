@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 // Timer pause/resume constants
 static const void *NSTimerPauseDate = &NSTimerPauseDate;

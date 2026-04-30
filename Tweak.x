@@ -523,7 +523,7 @@ NSString *title(VideoConfigurationMode mode) {
         }
         id renderer = [shutterControl valueForKey:@"_liquidShutterRenderer"];
         if ([renderer respondsToSelector:@selector(renderIfNecessary)]) {
-            [renderer renderIfNecessary];
+            ((void (*)(id, SEL))objc_msgSend)(renderer, @selector(renderIfNecessary));
         } else if ([shutterControl respondsToSelector:@selector(_updateRendererShapes)]) {
             [shutterControl _updateRendererShapes];
         }
