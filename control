@@ -9,6 +9,6 @@ Section: Tweaks
 Depends: mobilesubstrate (>= 0.9.5000), preferenceloader (>= 2.2.0)
 Priority: optional
 Depiction: https://axs66.github.io/repo
-SileoDepiction: https://axs66.github.io/repo/sileo/cameraboost.json
-Icon: https://axs66.github.io/repo/icons/cameraboost.png
+SileoDepiction: https://axs66.github.io/pro/sileo/cameraboost.json
+Icon: https://axs66.github.io/pro/icons/cameraboost.png
 

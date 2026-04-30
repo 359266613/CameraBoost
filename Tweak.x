@@ -2,6 +2,14 @@
 #import <CoreText/CoreText.h>
 #import <rootless.h>
 
+extern NSString *CAMLocalizedFrameworkString(NSString *);
+
+@interface AVCaptureMovieFileOutput (CameraBoost)
+- (BOOL)isRecordingPaused;
+- (void)pauseRecording;
+- (void)resumeRecording;
+@end
+
 #define CAMERABOOST_PREF_DOMAIN CFSTR("com.axs.cameraboost")
 
 // Global variables for configuration
@@ -61,6 +69,8 @@ static BOOL shouldHidePauseResumeDuringVideoButton(CAMViewfinderViewController *
 static void layoutPauseResumeDuringVideoButton(UIView *view, CUShutterButton *button, UIView *shutterButton, CGFloat displayScale, BOOL fixedPosition);
 
 @interface CAMElapsedTimeView (CameraBoost)
+- (void)pauseTimer;
+- (void)resumeTimer;
 - (void)updateUI:(BOOL)pause recording:(BOOL)recording;
 @end
 
@@ -75,11 +85,11 @@ static void layoutPauseResumeDuringVideoButton(UIView *view, CUShutterButton *bu
 
 // Utility functions
 BOOL checkModeAndDevice(NSInteger mode, NSInteger device) {
-    return (mode == CAMERA_MODE_VIDEO || mode == CAMERA_MODE_SLOMO) && device == CAMERA_DEVICE_BACK;
+    return isBackCamera(device) && (mode == CAMERA_MODE_VIDEO || mode == CAMERA_MODE_SLOMO || mode == 5);
 }
 
 BOOL isBackCamera(NSInteger device) {
-    return device == CAMERA_DEVICE_BACK;
+    return device != CAMERA_DEVICE_FRONT && device <= 7;
 }
 
 NSString *title(VideoConfigurationMode mode) {
@@ -489,13 +499,7 @@ NSString *title(VideoConfigurationMode mode) {
     CAMCaptureEngine *engine = [cuc _captureEngine];
     CAMCaptureMovieFileOutput *movieOutput = [engine movieFileOutput];
     if (movieOutput == nil) return;
-    // For iOS 14.5-16.6.1, we'll use a custom pause state tracking
-    BOOL pause = NO;
-    // Check if we have a custom pause state stored
-    NSNumber *pauseState = [movieOutput valueForKey:@"_isPaused"];
-    if (pauseState) {
-        pause = [pauseState boolValue];
-    }
+    BOOL pause = ![movieOutput isRecordingPaused];
     CAMElapsedTimeView *elapsedTimeView = self._elapsedTimeView;
     if (elapsedTimeView == nil) {
         elapsedTimeView = [self.view valueForKey:@"_elapsedTimeView"];
@@ -513,36 +517,25 @@ NSString *title(VideoConfigurationMode mode) {
     if (shutterControl) {
         if (pause) {
             [shutterControl setValue:@(YES) forKey:@"overrideShutterButtonColor"];
-            if ([shutterControl respondsToSelector:@selector(_updateRendererShapes)]) {
-                [shutterControl _updateRendererShapes];
-            }
-        } else {
-            if ([shutterControl respondsToSelector:@selector(_updateRendererShapes)]) {
-                [shutterControl _updateRendererShapes];
-            }
+        }
+        if ([shutterControl respondsToSelector:@selector(_updateRendererShapes)]) {
+            [shutterControl _updateRendererShapes];
         }
         id renderer = [shutterControl valueForKey:@"_liquidShutterRenderer"];
-        if (renderer && [renderer respondsToSelector:@selector(update)]) {
-            [renderer performSelector:@selector(update)];
-    }
-        // renderer may be unused on some iOS versions; intentionally not calling renderIfNecessary for compatibility
+        if ([renderer respondsToSelector:@selector(renderIfNecessary)]) {
+            [renderer renderIfNecessary];
+        } else if ([shutterControl respondsToSelector:@selector(_updateRendererShapes)]) {
+            [shutterControl _updateRendererShapes];
+        }
         [shutterControl setValue:@(NO) forKey:@"overrideShutterButtonColor"];
     }
     [self _updatePauseResumeDuringVideoButton:pause];
     if (pause) {
-        if ([elapsedTimeView respondsToSelector:@selector(pauseTimer)]) {
-            [elapsedTimeView performSelector:@selector(pauseTimer)];
-        }
-        // For iOS 14.5-16.6.1, we'll use a different approach
-        // Since pauseRecording is not available, we'll just update the UI state
-        // The actual recording will continue, but we'll track the pause state for UI purposes
-        [movieOutput setValue:@(YES) forKey:@"_isPaused"];
+        [elapsedTimeView pauseTimer];
+        [movieOutput pauseRecording];
     } else {
-        if ([elapsedTimeView respondsToSelector:@selector(resumeTimer)]) {
-            [elapsedTimeView performSelector:@selector(resumeTimer)];
-        }
-        // Clear the pause state
-        [movieOutput setValue:@(NO) forKey:@"_isPaused"];
+        [elapsedTimeView resumeTimer];
+        [movieOutput resumeRecording];
     }
 }
 
@@ -694,7 +687,7 @@ NSString *title(VideoConfigurationMode mode) {
     }
 
     NSNumberFormatter *formatter = [%c(CAMControlStatusIndicator) integerFormatter];
-    NSString *resolutionLabel = resolutionLabelFormat;
+    NSString *resolutionLabel = CAMLocalizedFrameworkString(resolutionLabelFormat);
     NSInteger framerateIndex = [[self valueForKey:@"framerate"] integerValue] - 1;
     if (framerateIndex < 0 || framerateIndex >= 5) framerateIndex = 0;
     NSString *framerateLabel = [formatter stringFromNumber:@(toFPS[framerateIndex])];
