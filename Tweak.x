@@ -2,7 +2,29 @@
 #import <CoreText/CoreText.h>
 #import <rootless.h>
 
-extern NSString *CAMLocalizedFrameworkString(NSString *);
+static void *cameraUIHandle = NULL;
+
+typedef NSString *(*CAMLocalizedFrameworkStringFunction)(NSString *);
+
+static NSString *CAMLocalizedFrameworkString(NSString *key) {
+    static CAMLocalizedFrameworkStringFunction localizedStringFunction = NULL;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        localizedStringFunction = (CAMLocalizedFrameworkStringFunction)dlsym(cameraUIHandle ?: RTLD_DEFAULT, "CAMLocalizedFrameworkString");
+    });
+
+    if (localizedStringFunction) {
+        NSString *localizedString = localizedStringFunction(key);
+        if (localizedString.length > 0) {
+            return localizedString;
+        }
+    }
+
+    if ([key isEqualToString:@"FRAMERATE_INDICATOR_720p30"]) return @"720p";
+    if ([key isEqualToString:@"FRAMERATE_INDICATOR_HD"]) return @"HD";
+    if ([key isEqualToString:@"FRAMERATE_INDICATOR_4K"]) return @"4K";
+    return key ?: @"";
+}
 
 @interface AVCaptureMovieFileOutput (CameraBoost)
 - (BOOL)isRecordingPaused;
@@ -790,8 +812,8 @@ static BOOL shouldHidePauseResumeDuringVideoButton(CAMViewfinderViewController *
     loadCameraBoostPreferences();
 
     // Initialize camera
-    void *cameraHandle = openCamera10();
-    if (!cameraHandle) {
+    cameraUIHandle = openCamera10();
+    if (!cameraUIHandle) {
         NSLog(@"CameraBoost: Failed to load CameraUI framework");
     }
     %init;
